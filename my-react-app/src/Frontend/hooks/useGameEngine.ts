@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FarkleGame } from '../engine/mockEngine';
-import type { GameSnapshot, SeatConfig } from '../types';
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Game } from "../../Backend/game";
+import { toSnapshot } from "../engine/adapter";
+import type { GameSnapshot, SeatConfig } from "../types";
 
 /** Milliseconds between bot steps at 1x. Higher speeds divide this. */
 const BASE_TICK = 620;
@@ -19,33 +20,41 @@ export type Speed = 1 | 2 | 4;
  * why there is no reset path here.
  */
 export function useGameEngine(seats: SeatConfig[], target: number) {
-  const [game] = useState(() => new FarkleGame(seats, target));
-  const [snapshot, setSnapshot] = useState<GameSnapshot>(() => game.snapshot());
+  const [game] = useState(() => new Game(seats, target));
+  const [snapshot, setSnapshot] = useState<GameSnapshot>(() =>
+    toSnapshot(game),
+  );
   const [speed, setSpeed] = useState<Speed>(2);
   const [paused, setPaused] = useState(false);
 
-  const act = useCallback((fn: (g: FarkleGame) => void) => {
-    fn(game);
-    setSnapshot(game.snapshot());
-  }, [game]);
+  const act = useCallback(
+    (fn: (g: Game) => void) => {
+      fn(game);
+      setSnapshot(toSnapshot(game));
+    },
+    [game],
+  );
 
   // Bots step on a timer. Humans are driven by the buttons instead, so the
   // timer stops as soon as the active seat is a person.
   useEffect(() => {
     if (paused || game.isOver || game.awaitingHuman) return;
     const id = window.setTimeout(() => {
-      if (game.stepBot()) setSnapshot(game.snapshot());
+      if (game.stepBot()) setSnapshot(toSnapshot(game));
     }, BASE_TICK / speed);
     return () => window.clearTimeout(id);
   }, [game, snapshot, paused, speed]);
 
-  const actions = useMemo(() => ({
-    roll: () => act((g) => g.roll()),
-    toggleDie: (id: string) => act((g) => g.toggleDie(id)),
-    rollAgain: () => act((g) => g.rollAgain()),
-    bank: () => act((g) => g.bank()),
-    advance: () => act((g) => g.advance()),
-  }), [act]);
+  const actions = useMemo(
+    () => ({
+      roll: () => act((g) => g.roll()),
+      toggleDie: (id: string) => act((g) => g.toggleDie(id)),
+      rollAgain: () => act((g) => g.rollAgain()),
+      bank: () => act((g) => g.bank()),
+      advance: () => act((g) => g.advance()),
+    }),
+    [act],
+  );
 
   return { snapshot, actions, speed, setSpeed, paused, setPaused };
 }

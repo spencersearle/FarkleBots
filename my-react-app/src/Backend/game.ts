@@ -1,7 +1,274 @@
-import type { Player } from "./player";
+import { Player } from "./player";
+import { AllDice } from "./allDice";
+import { RollingStrategy } from "./rollingStrategy";
+import { scoreAll, scoreSelection, isFarkle } from "./farkleRules";
+import type { SeatConfig, Phase } from "../Frontend/types";
+
+const DICE_COUNT = 6;
 
 export class Game {
-  public allPlayers!: Player[];
-  public isOver!: boolean;
-  public currentPlayer!: Player;
+  private players: Player[];
+  private allDice: AllDice;
+  private activePlayerIndex: number = 0;
+  private turnPot: number = 0;
+  private turnPeak: number = 0;
+  private turnNumber: number = 1;
+  private phase: Phase = "awaitingRoll";
+  private log: Array<{
+    id: string;
+    seatId: string;
+    text: string;
+    kind: string;
+  }> = [];
+  private logId: number = 0;
+  private winnerId: string | null = null;
+  public targetScore: number;
+  private rng: () => number;
+
+  constructor(
+    seatConfigs: SeatConfig[],
+    targetScore: number,
+    rng: () => number = Math.random,
+  ) {
+    this.targetScore = targetScore;
+    this.rng = rng;
+    this.allDice = new AllDice(DICE_COUNT);
+
+    this.players = seatConfigs.map((config) => {
+      const player = new Player(
+        config.id,
+        config.name,
+        config.strategy,
+        config.accent,
+        config.strategy === "human",
+      );
+      return player;
+    });
+  }
+
+  // ---- Queries ----
+
+  get currentPlayer(): Player {
+    return this.players[this.activePlayerIndex];
+  }
+
+  get isOver(): boolean {
+    return this.winnerId !== null;
+  }
+
+  get awaitingHuman(): boolean {
+    return (
+      this.currentPlayer.isHuman &&
+      (this.phase === "awaitingRoll" ||
+        this.phase === "awaitingPick" ||
+        this.phase === "awaitingDecision")
+    );
+  }
+
+  get pendingPick(): number {
+    const selectedValues = this.allDice
+      .getSelectedDice()
+      .map((d) => d.currentValue);
+    return scoreSelection(selectedValues);
+  }
+
+  get leaderScore(): number {
+    return Math.max(...this.players.map((p) => p.banked));
+  }
+
+  // ---- Actions ----
+
+  public roll(): void {
+    if (this.phase !== "awaitingRoll" || this.isOver) return;
+
+    const liveDice = this.allDice.getLiveDice();
+    liveDice.forEach((die) => die.roll());
+
+    const dieValues = liveDice.map((d) => d.currentValue);
+    this.push("roll", `${this.currentPlayer.name} rolls ${liveDice.length}`);
+
+    if (isFarkle(dieValues)) {
+      this.phase = "farkle";
+      this.push(
+        "farkle",
+        `${this.currentPlayer.name} farkled and lost ${this.turnPot}`,
+      );
+    } else {
+      this.phase = "awaitingPick";
+    }
+  }
+
+  public toggleDie(id: string): void {
+    if (this.phase !== "awaitingPick" && this.phase !== "awaitingDecision") {
+      return;
+    }
+
+    const die = this.allDice.allDice.find((d) => d.id === id);
+    if (!die || die.isFrozen) return;
+
+    die.selected = !die.selected;
+    this.phase = this.pendingPick > 0 ? "awaitingDecision" : "awaitingPick";
+  }
+
+  public autoPick(): void {
+    if (this.phase !== "awaitingPick") return;
+
+    const liveDice = this.allDice.getLiveDice();
+    const dieValues = liveDice.map((d) => d.currentValue);
+    const { scoringIndexes } = scoreAll(dieValues);
+
+    if (scoringIndexes.length === 0) return;
+
+    liveDice.forEach((d, i) => {
+      d.selected = scoringIndexes.includes(i);
+    });
+
+    const kept = this.allDice
+      .getSelectedDice()
+      .map((d) => d.currentValue)
+      .join(" · ");
+    this.push(
+      "keep",
+      `${this.currentPlayer.name} keeps ${kept} for ${this.pendingPick}`,
+    );
+    this.phase = "awaitingDecision";
+  }
+
+  public rollAgain(): void {
+    if (this.phase !== "awaitingDecision") return;
+
+    this.commitPick();
+
+    const liveDice = this.allDice.getLiveDice();
+    if (liveDice.length === 0) {
+      this.allDice.allDice.forEach((d) => {
+        d.isFrozen = false;
+        d.selected = false;
+      });
+      this.phase = "hotDice";
+      this.push(
+        "hotDice",
+        `${this.currentPlayer.name} scored all six, dice come back`,
+      );
+      return;
+    }
+
+    this.phase = "awaitingRoll";
+  }
+
+  public bank(): void {
+    if (this.phase !== "awaitingDecision") return;
+
+    this.commitPick();
+    const player = this.currentPlayer;
+    player.bank(this.turnPot);
+    player.recordTurn(this.turnPeak, false);
+    this.push("bank", `${player.name} banked ${this.turnPot}`);
+
+    if (player.banked >= this.targetScore) {
+      this.winnerId = player.id;
+      this.phase = "gameOver";
+      this.push("win", `${player.name} reached ${player.banked} and wins`);
+      return;
+    }
+
+    this.nextSeat();
+  }
+
+  public advance(): void {
+    if (this.phase === "hotDice") {
+      this.phase = "awaitingRoll";
+      return;
+    }
+
+    if (this.phase !== "farkle") return;
+
+    const player = this.currentPlayer;
+    player.recordTurn(this.turnPeak, true);
+    this.nextSeat();
+  }
+
+  public stepBot(): boolean {
+    if (this.isOver || this.currentPlayer.isHuman) return false;
+
+    switch (this.phase) {
+      case "awaitingRoll":
+        this.roll();
+        return true;
+      case "awaitingPick":
+        this.autoPick();
+        return true;
+      case "awaitingDecision": {
+        if (this.decideAsBot()) {
+          this.rollAgain();
+        } else {
+          this.bank();
+        }
+        return true;
+      }
+      case "farkle":
+      case "hotDice":
+        this.advance();
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  // ---- Internal helpers ----
+
+  private decideAsBot(): boolean {
+    const player = this.currentPlayer;
+    const liveDice = this.allDice.getLiveDice();
+    const selectedDice = this.allDice.getSelectedDice();
+    const wouldRemain = liveDice.length - selectedDice.length;
+    const diceLeft = wouldRemain === 0 ? DICE_COUNT : wouldRemain;
+
+    const strategy = new RollingStrategy(player.strategy);
+    const decision = strategy.decide({
+      pot: this.turnPot + this.pendingPick,
+      diceLeft,
+      banked: player.banked,
+      leaderScore: this.leaderScore,
+      target: this.targetScore,
+      turnNumber: this.turnNumber,
+    });
+
+    return decision.roll;
+  }
+
+  private commitPick(): void {
+    this.turnPot += this.pendingPick;
+    this.turnPeak = Math.max(this.turnPeak, this.turnPot);
+    this.allDice.allDice.forEach((d) => {
+      if (d.selected) {
+        d.isFrozen = true;
+        d.selected = false;
+      }
+    });
+  }
+
+  private nextSeat(): void {
+    this.turnPot = 0;
+    this.turnPeak = 0;
+    this.allDice.resetTurnDice();
+    this.activePlayerIndex = (this.activePlayerIndex + 1) % this.players.length;
+    if (this.activePlayerIndex === 0) {
+      this.turnNumber += 1;
+    }
+    this.phase = "awaitingRoll";
+  }
+
+  private push(kind: string, text: string): void {
+    this.logId += 1;
+    this.log.unshift({
+      id: `l${this.logId}`,
+      seatId: this.currentPlayer.id,
+      text,
+      kind,
+    });
+    if (this.log.length > 40) {
+      this.log.pop();
+    }
+  }
 }

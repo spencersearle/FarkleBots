@@ -7,24 +7,18 @@
  * plain snapshots and the UI reads only that.
  */
 
-export type StrategyId =
-  | 'human'
-  | 'greedy'
-  | 'safe'
-  | 'greedierOverTime'
-  | 'safeWhenAhead'
-  | 'neverRollsOne';
+import type { StrategyId, AccentId, TurnRecord } from "../Backend/types";
 
-export type AccentId = 'greedy' | 'cautious' | 'adaptive' | 'human' | 'extra';
+export type { StrategyId, AccentId, TurnRecord };
 
 /** What the table is doing right now. Drives which controls and overlays show. */
 export type Phase =
-  | 'awaitingRoll'      // seat is up, dice not yet thrown
-  | 'awaitingPick'      // dice are showing, scoring dice not yet chosen
-  | 'awaitingDecision'  // dice picked, bank-or-roll is the open question
-  | 'farkle'            // the roll scored nothing, pot is lost
-  | 'hotDice'           // all six scored, dice come back
-  | 'gameOver';
+  | "awaitingRoll" // seat is up, dice not yet thrown
+  | "awaitingPick" // dice are showing, scoring dice not yet chosen
+  | "awaitingDecision" // dice picked, bank-or-roll is the open question
+  | "farkle" // the roll scored nothing, pot is lost
+  | "hotDice" // all six scored, dice come back
+  | "gameOver";
 
 export interface DieView {
   id: string;
@@ -35,14 +29,6 @@ export interface DieView {
   selected: boolean;
   /** Part of some scoring combination in the current roll. */
   scoring: boolean;
-}
-
-/** One completed turn, for the turn tape. */
-export interface TurnRecord {
-  /** Points that were on the table at the turn's peak. */
-  peak: number;
-  /** True if the turn ended in a farkle and the peak was lost. */
-  busted: boolean;
 }
 
 export interface SeatView {
@@ -66,7 +52,7 @@ export interface LogEntry {
   seatId: string;
   accent: AccentId;
   text: string;
-  kind: 'roll' | 'keep' | 'bank' | 'farkle' | 'hotDice' | 'win';
+  kind: "roll" | "keep" | "bank" | "farkle" | "hotDice" | "win";
 }
 
 /** The numbers behind the decision the current seat is facing. */
@@ -75,7 +61,7 @@ export interface DecisionMath {
   farkleChance: number;
   expectedIfRoll: number;
   certainIfBank: number;
-  verdict: 'ROLL' | 'BANK' | 'BUST' | 'HOT';
+  verdict: "ROLL" | "BANK" | "BUST" | "HOT";
   reasoning: string;
 }
 

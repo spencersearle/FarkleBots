@@ -9,13 +9,19 @@
  * fixture for testing.
  */
 
-import { scoreAll, scoreSelection, rollDice, isFarkle } from './rules';
-import { farkleChance, expectedValueOfRolling } from './odds';
-import { STRATEGIES } from './strategies';
+import { scoreAll, scoreSelection, rollDice, isFarkle } from '../../Backend/farkleRules';
+import { farkleChance, expectedValueOfRolling } from "./odds";
+import { STRATEGIES } from "./strategies";
 import type {
-  GameSnapshot, SeatView, DieView, LogEntry, Phase,
-  SeatConfig, TurnRecord, DecisionMath,
-} from '../types';
+  GameSnapshot,
+  SeatView,
+  DieView,
+  LogEntry,
+  Phase,
+  SeatConfig,
+  TurnRecord,
+  DecisionMath,
+} from "../types";
 
 const DICE_COUNT = 6;
 
@@ -39,7 +45,7 @@ export class FarkleGame {
   private turnPot = 0;
   private turnPeak = 0;
   private turnNumber = 1;
-  private phase: Phase = 'awaitingRoll';
+  private phase: Phase = "awaitingRoll";
   private log: LogEntry[] = [];
   private logId = 0;
   private winnerId: string | null = null;
@@ -47,32 +53,51 @@ export class FarkleGame {
   readonly target: number;
   private readonly rng: () => number;
 
-  constructor(configs: SeatConfig[], target: number, rng: () => number = Math.random) {
+  constructor(
+    configs: SeatConfig[],
+    target: number,
+    rng: () => number = Math.random,
+  ) {
     this.target = target;
     this.rng = rng;
     this.seats = configs.map((c) => ({
       ...c,
       banked: 0,
       history: [],
-      isHuman: c.strategy === 'human',
+      isHuman: c.strategy === "human",
     }));
     this.dice = Array.from({ length: DICE_COUNT }, (_, i) => ({
-      id: `d${i}`, value: 1, locked: false, selected: false,
+      id: `d${i}`,
+      value: 1,
+      locked: false,
+      selected: false,
     }));
   }
 
   // ---------------------------------------------------------------- queries
 
-  get currentSeat(): Seat { return this.seats[this.active]; }
-  get isOver(): boolean { return this.winnerId !== null; }
+  get currentSeat(): Seat {
+    return this.seats[this.active];
+  }
+  get isOver(): boolean {
+    return this.winnerId !== null;
+  }
   /** True when the table is waiting on a person rather than a policy. */
   get awaitingHuman(): boolean {
-    return this.currentSeat.isHuman
-      && (this.phase === 'awaitingRoll' || this.phase === 'awaitingPick' || this.phase === 'awaitingDecision');
+    return (
+      this.currentSeat.isHuman &&
+      (this.phase === "awaitingRoll" ||
+        this.phase === "awaitingPick" ||
+        this.phase === "awaitingDecision")
+    );
   }
 
-  private get liveDice(): Die[] { return this.dice.filter((d) => !d.locked); }
-  private get selectedDice(): Die[] { return this.dice.filter((d) => d.selected); }
+  private get liveDice(): Die[] {
+    return this.dice.filter((d) => !d.locked);
+  }
+  private get selectedDice(): Die[] {
+    return this.dice.filter((d) => d.selected);
+  }
   private get pendingPick(): number {
     return scoreSelection(this.selectedDice.map((d) => d.value));
   }
@@ -84,28 +109,35 @@ export class FarkleGame {
 
   /** Throw every die that is not locked. */
   roll(): void {
-    if (this.phase !== 'awaitingRoll' || this.isOver) return;
+    if (this.phase !== "awaitingRoll" || this.isOver) return;
     const live = this.liveDice;
     const values = rollDice(live.length, this.rng);
-    live.forEach((d, i) => { d.value = values[i]; d.selected = false; });
+    live.forEach((d, i) => {
+      d.value = values[i];
+      d.selected = false;
+    });
 
-    this.push('roll', `${this.currentSeat.name} rolls ${live.length}`);
+    this.push("roll", `${this.currentSeat.name} rolls ${live.length}`);
 
     if (isFarkle(values)) {
-      this.phase = 'farkle';
-      this.push('farkle', `${this.currentSeat.name} farkled and lost ${this.turnPot}`);
+      this.phase = "farkle";
+      this.push(
+        "farkle",
+        `${this.currentSeat.name} farkled and lost ${this.turnPot}`,
+      );
     } else {
-      this.phase = 'awaitingPick';
+      this.phase = "awaitingPick";
     }
   }
 
   /** Toggle one die into or out of the current pick. Locked dice ignore this. */
   toggleDie(id: string): void {
-    if (this.phase !== 'awaitingPick' && this.phase !== 'awaitingDecision') return;
+    if (this.phase !== "awaitingPick" && this.phase !== "awaitingDecision")
+      return;
     const die = this.dice.find((d) => d.id === id);
     if (!die || die.locked) return;
     die.selected = !die.selected;
-    this.phase = this.pendingPick > 0 ? 'awaitingDecision' : 'awaitingPick';
+    this.phase = this.pendingPick > 0 ? "awaitingDecision" : "awaitingPick";
   }
 
   /**
@@ -117,42 +149,53 @@ export class FarkleGame {
    * simplification.
    */
   autoPick(): void {
-    if (this.phase !== 'awaitingPick') return;
+    if (this.phase !== "awaitingPick") return;
     const live = this.liveDice;
     const { scoringIndexes } = scoreAll(live.map((d) => d.value));
     if (scoringIndexes.length === 0) return;
-    live.forEach((d, i) => { d.selected = scoringIndexes.includes(i); });
-    const kept = this.selectedDice.map((d) => d.value).join(' · ');
-    this.push('keep', `${this.currentSeat.name} keeps ${kept} for ${this.pendingPick}`);
-    this.phase = 'awaitingDecision';
+    live.forEach((d, i) => {
+      d.selected = scoringIndexes.includes(i);
+    });
+    const kept = this.selectedDice.map((d) => d.value).join(" · ");
+    this.push(
+      "keep",
+      `${this.currentSeat.name} keeps ${kept} for ${this.pendingPick}`,
+    );
+    this.phase = "awaitingDecision";
   }
 
   /** Commit the pick, then throw whatever is left. Handles hot dice. */
   rollAgain(): void {
-    if (this.phase !== 'awaitingDecision') return;
+    if (this.phase !== "awaitingDecision") return;
     this.commitPick();
     if (this.liveDice.length === 0) {
-      this.dice.forEach((d) => { d.locked = false; d.selected = false; });
-      this.phase = 'hotDice';
-      this.push('hotDice', `${this.currentSeat.name} scored all six, dice come back`);
+      this.dice.forEach((d) => {
+        d.locked = false;
+        d.selected = false;
+      });
+      this.phase = "hotDice";
+      this.push(
+        "hotDice",
+        `${this.currentSeat.name} scored all six, dice come back`,
+      );
       return;
     }
-    this.phase = 'awaitingRoll';
+    this.phase = "awaitingRoll";
   }
 
   /** Commit the pick and add the turn to this seat's banked score. */
   bank(): void {
-    if (this.phase !== 'awaitingDecision') return;
+    if (this.phase !== "awaitingDecision") return;
     this.commitPick();
     const seat = this.currentSeat;
     seat.banked += this.turnPot;
     seat.history.push({ peak: this.turnPeak, busted: false });
-    this.push('bank', `${seat.name} banked ${this.turnPot}`);
+    this.push("bank", `${seat.name} banked ${this.turnPot}`);
 
     if (seat.banked >= this.target) {
       this.winnerId = seat.id;
-      this.phase = 'gameOver';
-      this.push('win', `${seat.name} reached ${seat.banked} and wins`);
+      this.phase = "gameOver";
+      this.push("win", `${seat.name} reached ${seat.banked} and wins`);
       return;
     }
     this.nextSeat();
@@ -160,8 +203,11 @@ export class FarkleGame {
 
   /** Move play on after a farkle or a hot-dice pause. */
   advance(): void {
-    if (this.phase === 'hotDice') { this.phase = 'awaitingRoll'; return; }
-    if (this.phase !== 'farkle') return;
+    if (this.phase === "hotDice") {
+      this.phase = "awaitingRoll";
+      return;
+    }
+    if (this.phase !== "farkle") return;
     const seat = this.currentSeat;
     seat.history.push({ peak: this.turnPeak, busted: true });
     this.nextSeat();
@@ -171,16 +217,23 @@ export class FarkleGame {
   stepBot(): boolean {
     if (this.isOver || this.currentSeat.isHuman) return false;
     switch (this.phase) {
-      case 'awaitingRoll': this.roll(); return true;
-      case 'awaitingPick': this.autoPick(); return true;
-      case 'awaitingDecision': {
+      case "awaitingRoll":
+        this.roll();
+        return true;
+      case "awaitingPick":
+        this.autoPick();
+        return true;
+      case "awaitingDecision": {
         if (this.decideAsBot()) this.rollAgain();
         else this.bank();
         return true;
       }
-      case 'farkle':
-      case 'hotDice': this.advance(); return true;
-      default: return false;
+      case "farkle":
+      case "hotDice":
+        this.advance();
+        return true;
+      default:
+        return false;
     }
   }
 
@@ -203,19 +256,28 @@ export class FarkleGame {
   private commitPick(): void {
     this.turnPot += this.pendingPick;
     this.turnPeak = Math.max(this.turnPeak, this.turnPot);
-    this.dice.forEach((d) => { if (d.selected) { d.locked = true; d.selected = false; } });
+    this.dice.forEach((d) => {
+      if (d.selected) {
+        d.locked = true;
+        d.selected = false;
+      }
+    });
   }
 
   private nextSeat(): void {
     this.turnPot = 0;
     this.turnPeak = 0;
-    this.dice.forEach((d) => { d.locked = false; d.selected = false; d.value = 1; });
+    this.dice.forEach((d) => {
+      d.locked = false;
+      d.selected = false;
+      d.value = 1;
+    });
     this.active = (this.active + 1) % this.seats.length;
     if (this.active === 0) this.turnNumber += 1;
-    this.phase = 'awaitingRoll';
+    this.phase = "awaitingRoll";
   }
 
-  private push(kind: LogEntry['kind'], text: string): void {
+  private push(kind: LogEntry["kind"], text: string): void {
     this.logId += 1;
     this.log.unshift({
       id: `l${this.logId}`,
@@ -231,9 +293,10 @@ export class FarkleGame {
 
   snapshot(): GameSnapshot {
     const liveValues = this.liveDice.map((d) => d.value);
-    const scoring = this.phase === 'awaitingPick' || this.phase === 'awaitingDecision'
-      ? scoreAll(liveValues).scoringIndexes
-      : [];
+    const scoring =
+      this.phase === "awaitingPick" || this.phase === "awaitingDecision"
+        ? scoreAll(liveValues).scoringIndexes
+        : [];
     let liveIndex = -1;
 
     const dice: DieView[] = this.dice.map((d) => {
@@ -261,7 +324,8 @@ export class FarkleGame {
         isActive: i === this.active && !this.isOver,
         accent: s.accent,
         history: s.history,
-        avgTurn: turns === 0 ? 0 : Math.round(s.banked / Math.max(scored.length, 1)),
+        avgTurn:
+          turns === 0 ? 0 : Math.round(s.banked / Math.max(scored.length, 1)),
         farkleRate: turns === 0 ? 0 : busts / turns,
         timesBanked: scored.length,
       };
@@ -285,24 +349,28 @@ export class FarkleGame {
     const seat = this.currentSeat;
     const pot = this.turnPot + this.pendingPick;
 
-    if (this.phase === 'farkle') {
+    if (this.phase === "farkle") {
       return {
-        diceLeft: 0, farkleChance: 1, expectedIfRoll: 0, certainIfBank: 0,
-        verdict: 'BUST',
+        diceLeft: 0,
+        farkleChance: 1,
+        expectedIfRoll: 0,
+        certainIfBank: 0,
+        verdict: "BUST",
         reasoning: `A roll with no scoring dice ends the turn. ${this.turnPot} gone.`,
       };
     }
-    if (this.phase === 'hotDice') {
+    if (this.phase === "hotDice") {
       return {
         diceLeft: DICE_COUNT,
         farkleChance: farkleChance(DICE_COUNT),
         expectedIfRoll: expectedValueOfRolling(pot, DICE_COUNT),
         certainIfBank: pot,
-        verdict: 'HOT',
-        reasoning: 'All six dice scored, so the pot carries and all six come back live.',
+        verdict: "HOT",
+        reasoning:
+          "All six dice scored, so the pot carries and all six come back live.",
       };
     }
-    if (this.phase !== 'awaitingDecision') return null;
+    if (this.phase !== "awaitingDecision") return null;
 
     const wouldRemain = this.liveDice.length - this.selectedDice.length;
     const diceLeft = wouldRemain === 0 ? DICE_COUNT : wouldRemain;
@@ -320,7 +388,7 @@ export class FarkleGame {
       farkleChance: farkleChance(diceLeft),
       expectedIfRoll: Math.round(expectedValueOfRolling(pot, diceLeft)),
       certainIfBank: pot,
-      verdict: decision.roll ? 'ROLL' : 'BANK',
+      verdict: decision.roll ? "ROLL" : "BANK",
       reasoning: seat.isHuman
         ? `${diceLeft} dice, ${pot} on the table. Rolling is worth about ${Math.round(expectedValueOfRolling(pot, diceLeft))}.`
         : decision.reasoning,
