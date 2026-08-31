@@ -7,9 +7,9 @@ import type { SeatConfig, Phase } from "../Frontend/types";
 const DICE_COUNT = 6;
 
 export class Game {
-  private players: Player[];
+  private _players: Player[];
   private allDice: AllDice;
-  private activePlayerIndex: number = 0;
+  private activeIndex: number = 0;
   private turnPot: number = 0;
   private turnPeak: number = 0;
   private turnNumber: number = 1;
@@ -34,7 +34,7 @@ export class Game {
     this.rng = rng;
     this.allDice = new AllDice(DICE_COUNT);
 
-    this.players = seatConfigs.map((config) => {
+    this._players = seatConfigs.map((config) => {
       const player = new Player(
         config.id,
         config.name,
@@ -49,7 +49,11 @@ export class Game {
   // ---- Queries ----
 
   get currentPlayer(): Player {
-    return this.players[this.activePlayerIndex];
+    return this._players[this.activeIndex];
+  }
+
+  get activePlayerIndex(): number {
+    return this.activeIndex;
   }
 
   get isOver(): boolean {
@@ -73,7 +77,11 @@ export class Game {
   }
 
   get leaderScore(): number {
-    return Math.max(...this.players.map((p) => p.banked));
+    return Math.max(...this._players.map((p) => p.banked));
+  }
+
+  get players(): Player[] {
+    return this._players;
   }
 
   // ---- Actions ----
@@ -81,9 +89,7 @@ export class Game {
   public roll(): void {
     if (this.phase !== "awaitingRoll" || this.isOver) return;
 
-    const liveDice = this.allDice.getLiveDice();
-    liveDice.forEach((die) => die.roll());
-
+    const liveDice = this.allDice.rollDice();
     const dieValues = liveDice.map((d) => d.currentValue);
     this.push("roll", `${this.currentPlayer.name} rolls ${liveDice.length}`);
 
@@ -107,6 +113,7 @@ export class Game {
     if (!die || die.isFrozen) return;
 
     die.selected = !die.selected;
+    this.allDice.updateSelectedDice();
     this.phase = this.pendingPick > 0 ? "awaitingDecision" : "awaitingPick";
   }
 
@@ -122,6 +129,7 @@ export class Game {
     liveDice.forEach((d, i) => {
       d.selected = scoringIndexes.includes(i);
     });
+    this.allDice.updateSelectedDice();
 
     const kept = this.allDice
       .getSelectedDice()
@@ -139,8 +147,8 @@ export class Game {
 
     this.commitPick();
 
-    const liveDice = this.allDice.getLiveDice();
-    if (liveDice.length === 0) {
+    const availableDice = this.allDice.allDice.filter((d) => !d.isFrozen);
+    if (availableDice.length === 0) {
       this.allDice.allDice.forEach((d) => {
         d.isFrozen = false;
         d.selected = false;
@@ -153,7 +161,9 @@ export class Game {
       return;
     }
 
+    // Roll immediately instead of forcing a second click on the "Roll X dice" button.
     this.phase = "awaitingRoll";
+    this.roll();
   }
 
   public bank(): void {
@@ -177,6 +187,7 @@ export class Game {
 
   public advance(): void {
     if (this.phase === "hotDice") {
+      this.allDice.resetTurnDice();
       this.phase = "awaitingRoll";
       return;
     }
@@ -246,14 +257,15 @@ export class Game {
         d.selected = false;
       }
     });
+    this.allDice.updateSelectedDice();
   }
 
   private nextSeat(): void {
     this.turnPot = 0;
     this.turnPeak = 0;
     this.allDice.resetTurnDice();
-    this.activePlayerIndex = (this.activePlayerIndex + 1) % this.players.length;
-    if (this.activePlayerIndex === 0) {
+    this.activeIndex = (this.activeIndex + 1) % this._players.length;
+    if (this.activeIndex === 0) {
       this.turnNumber += 1;
     }
     this.phase = "awaitingRoll";

@@ -182,13 +182,7 @@ export function Arena({ seats, target, onFinish }: Props) {
             )}
             {yourTurn &&
               (snapshot.phase === "farkle" || snapshot.phase === "hotDice") && (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={actions.advance}
-                >
-                  Continue
-                </button>
+                <p className="prompt">Tap continue to move on.</p>
               )}
             {!yourTurn && snapshot.phase !== "gameOver" && (
               <p className="prompt">{active.name} is playing.</p>
@@ -201,6 +195,15 @@ export function Arena({ seats, target, onFinish }: Props) {
               <span className="overlay-sub">
                 {snapshot.turnPot.toLocaleString()} points gone
               </span>
+              {yourTurn && (
+                <button
+                  type="button"
+                  className="btn btn-primary overlay-btn"
+                  onClick={actions.advance}
+                >
+                  Continue
+                </button>
+              )}
             </div>
           )}
           {snapshot.phase === "hotDice" && (
@@ -209,6 +212,15 @@ export function Arena({ seats, target, onFinish }: Props) {
               <span className="overlay-sub">
                 all six scored, roll them all again
               </span>
+              {yourTurn && (
+                <button
+                  type="button"
+                  className="btn btn-primary overlay-btn"
+                  onClick={actions.advance}
+                >
+                  Continue
+                </button>
+              )}
             </div>
           )}
           {snapshot.phase === "gameOver" && snapshot.winner && (

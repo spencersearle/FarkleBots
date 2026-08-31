@@ -54,15 +54,15 @@ export class AllDice {
     }
   }
 
+  public updateSelectedDice() {
+    this.selectedDice = this.allDice.filter((d) => d.selected && !d.isFrozen);
+  }
+
   public toggleDieSelection(dieId: string) {
     const die = this.allDice.find((d) => d.id === dieId);
     if (die && !die.isFrozen) {
       die.selected = !die.selected;
       this.updateSelectedDice();
     }
-  }
-
-  private updateSelectedDice() {
-    this.selectedDice = this.allDice.filter((d) => d.selected && !d.isFrozen);
   }
 }
