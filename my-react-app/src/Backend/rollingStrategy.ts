@@ -1,3 +1,3 @@
 export class RollingStrategy {
-  public shouldRollAgain: boolean;
+  public shouldRollAgain!: boolean;
 }
