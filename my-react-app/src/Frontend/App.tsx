@@ -1,122 +1,62 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState } from 'react';
+import { Setup } from './screens/Setup';
+import { Arena } from './screens/Arena';
+import { Results } from './screens/Results';
+import type { GameSnapshot, SeatConfig } from './types';
 
-function App() {
-  const [count, setCount] = useState(0)
+type Screen = 'setup' | 'arena' | 'results';
+
+/**
+ * Three screens and a little state. A router would be more machinery than three
+ * views need, so navigation is a plain union in state.
+ *
+ * `runId` is bumped to remount Arena, which is how a rematch gets a fresh game
+ * without the engine needing a reset path.
+ */
+export default function App() {
+  const [screen, setScreen] = useState<Screen>('setup');
+  const [seats, setSeats] = useState<SeatConfig[]>([]);
+  const [target, setTarget] = useState(10000);
+  const [runId, setRunId] = useState(0);
+  const [finalSnapshot, setFinalSnapshot] = useState<GameSnapshot | null>(null);
+
+  if (screen === 'setup') {
+    return (
+      <Setup
+        onStart={(nextSeats, nextTarget) => {
+          setSeats(nextSeats);
+          setTarget(nextTarget);
+          setRunId((n) => n + 1);
+          setScreen('arena');
+        }}
+      />
+    );
+  }
+
+  if (screen === 'arena') {
+    return (
+      <Arena
+        key={runId}
+        seats={seats}
+        target={target}
+        onFinish={(snapshot) => {
+          setFinalSnapshot(snapshot);
+          setScreen('results');
+        }}
+      />
+    );
+  }
+
+  if (finalSnapshot === null) {
+    setScreen('setup');
+    return null;
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    <Results
+      snapshot={finalSnapshot}
+      onRematch={() => { setRunId((n) => n + 1); setScreen('arena'); }}
+      onNewLineup={() => setScreen('setup')}
+    />
+  );
 }
-
-export default App

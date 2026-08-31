@@ -1,0 +1,34 @@
+.die {
+  display: grid;
+  place-items: center;
+  background: var(--paper);
+  box-shadow: inset 0 -3px 0 rgba(28, 25, 23, 0.07);
+  transition: transform 0.14s ease, background 0.14s ease, box-shadow 0.14s ease;
+}
+.die svg circle { fill: var(--ink); }
+
+.die-lg { width: 84px; height: 84px; border-radius: 20px; }
+.die-sm { width: 34px; height: 34px; border-radius: var(--r-sm); }
+
+/* Part of a scoring combination, so it may be kept. */
+.die-scoring {
+  background: #FFF3E8;
+  box-shadow: inset 0 0 0 2px var(--seat-greedy);
+}
+
+/* Picked during this roll, still releasable. */
+.die-selected {
+  background: var(--seat-greedy);
+  box-shadow: 0 6px 16px rgba(232, 97, 60, 0.4);
+}
+.die-selected svg circle { fill: var(--card); }
+
+/* Set aside in an earlier roll this turn. */
+.die-locked {
+  background: var(--card);
+  box-shadow: var(--shadow-rest);
+}
+.die-locked svg circle { fill: var(--seat-greedy); }
+
+button.die:hover:not(.die-locked) { transform: translateY(-3px); }
+button.die:focus-visible { outline: 3px solid var(--seat-human); outline-offset: 3px; }
